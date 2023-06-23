@@ -355,6 +355,7 @@ static int reapProc(nsjconf_t* nsjconf, pid_t pid, bool should_wait = false) {
 			LOG_I("pid=%d (%s) terminated with signal: %s (%d), (PIDs left: %d)", pid,
 			    remote_txt.c_str(), util::sigName(WTERMSIG(status)).c_str(),
 			    WTERMSIG(status), countProc(nsjconf) - 1);
+			fprintf(stderr, "Program terminated with signal: %s", util::sigName(WTERMSIG(status)).c_str());
 			removeProc(nsjconf, pid);
 			return 128 + WTERMSIG(status);
 		}
