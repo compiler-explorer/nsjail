@@ -61,6 +61,9 @@ TCP port to bind to (enables MODE_LISTEN_TCP) (default: 0)
 \fB\-\-bindhost\fR VALUE
 IP address to bind the port to (only in [MODE_LISTEN_TCP]), (default: '::')
 .TP
+\fB\-\-max_conns\fR VALUE
+Maximum number of connections across all IPs (only in [MODE_LISTEN_TCP]), (default: 0 (unlimited))
+.TP
 \fB\-\-max_conns_per_ip\fR|\fB\-i\fR VALUE
 Maximum number of connections per one IP (only in [MODE_LISTEN_TCP]), (default: 0 (unlimited))
 .TP
@@ -116,7 +119,7 @@ Don't close this FD before executing the child process (can be specified multipl
 Don't set the prctl(NO_NEW_PRIVS, 1) (DANGEROUS)
 .TP
 \fB\-\-rlimit_as\fR VALUE
-RLIMIT_AS in MB, 'max' or 'hard' for the current hard limit, 'def' or 'soft' for the current soft limit, 'inf' for RLIM_INFINITY (default: 512)
+RLIMIT_AS in MB, 'max' or 'hard' for the current hard limit, 'def' or 'soft' for the current soft limit, 'inf' for RLIM_INFINITY (default: 4096)
 .TP
 \fB\-\-rlimit_core\fR VALUE
 RLIMIT_CORE in MB, 'max' or 'hard' for the current hard limit, 'def' or 'soft' for the current limit, 'inf' for RLIM_INFINITY (default: 0)
@@ -216,6 +219,12 @@ Use SECCOMP_FILTER_FLAG_LOG. Log all actions except SECCOMP_RET_ALLOW. Supported
 .TP
 \fB\-\-cgroup_mem_max\fR VALUE
 Maximum number of bytes to use in the group (default: '0' \- disabled)
+.TP
+\fB\-\-cgroup_mem_memsw_max\fR VALUE
+Maximum number of memory+Swap bytes to use in the group (default: '0' \- disabled)
+.TP
+\fB\-\-cgroup_mem_swap_max\fR VALUE
+Maximum number of swap bytes to use in the group (default: '-1' \- disabled)
 .TP
 \fB\-\-cgroup_mem_mount\fR VALUE
 Location of memory cgroup FS (default: '/sys/fs/cgroup/memory')

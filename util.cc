@@ -40,6 +40,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -88,16 +89,22 @@ bool writeToFd(int fd, const void* buf, size_t len) {
 	return true;
 }
 
-bool writeBufToFile(const char* filename, const void* buf, size_t len, int open_flags) {
+bool writeBufToFile(
+    const char* filename, const void* buf, size_t len, int open_flags, bool log_errors) {
 	int fd;
 	TEMP_FAILURE_RETRY(fd = open(filename, open_flags, 0644));
 	if (fd == -1) {
-		PLOG_E("Couldn't open '%s' for writing", filename);
+		if (log_errors) {
+			PLOG_E("Couldn't open '%s' for writing", filename);
+		}
 		return false;
 	}
 
 	if (!writeToFd(fd, buf, len)) {
-		PLOG_E("Couldn't write '%zu' bytes to file '%s' (fd='%d')", len, filename, fd);
+		if (log_errors) {
+			PLOG_E(
+			    "Couldn't write '%zu' bytes to file '%s' (fd='%d')", len, filename, fd);
+		}
 		close(fd);
 		if (open_flags & O_CREAT) {
 			unlink(filename);
@@ -132,7 +139,7 @@ bool createDirRecursively(const char* dir) {
 		}
 
 		char* next = strchr(curr, '/');
-		if (next == NULL) {
+		if (next == nullptr) {
 			close(prev_dir_fd);
 			return true;
 		}
@@ -193,6 +200,12 @@ std::string StrPrintf(const char* format, ...) {
 	return str;
 }
 
+const std::string StrQuote(const std::string& str) {
+	std::ostringstream ss;
+	ss << std::quoted(str, '\'');
+	return ss.str();
+}
+
 bool isANumber(const char* s) {
 	for (size_t i = 0; s[i]; s++) {
 		if (!isdigit(s[i]) && s[i] != 'x') {
@@ -200,6 +213,10 @@ bool isANumber(const char* s) {
 		}
 	}
 	return true;
+}
+
+bool StrEq(const std::string_view& s1, const std::string_view& s2) {
+	return (s1 == s2);
 }
 
 static __thread pthread_once_t rndThreadOnce = PTHREAD_ONCE_INIT;
@@ -211,15 +228,15 @@ static const uint64_t c = 1442695040888963407ULL;
 
 static void rndInitThread(void) {
 #if defined(__NR_getrandom)
-	if (util::syscall(__NR_getrandom, (uintptr_t)&rndX, sizeof(rndX), 0) == sizeof(rndX)) {
+	if (TEMP_FAILURE_RETRY(util::syscall(__NR_getrandom, (uintptr_t)&rndX, sizeof(rndX), 0)) ==
+	    sizeof(rndX)) {
 		return;
 	}
 #endif /* defined(__NR_getrandom) */
 	int fd = TEMP_FAILURE_RETRY(open("/dev/urandom", O_RDONLY | O_CLOEXEC));
 	if (fd == -1) {
-		PLOG_D(
-		    "Couldn't open /dev/urandom for reading. Using gettimeofday "
-		    "fall-back");
+		PLOG_D("Couldn't open /dev/urandom for reading. Using gettimeofday "
+		       "fall-back");
 		struct timeval tv;
 		gettimeofday(&tv, NULL);
 		rndX = tv.tv_usec + ((uint64_t)tv.tv_sec << 32);
@@ -245,35 +262,38 @@ const std::string sigName(int signo) {
 		const int signo;
 		const char* const name;
 	} static const sigNames[] = {
-	    NS_VALSTR_STRUCT(SIGINT),
-	    NS_VALSTR_STRUCT(SIGILL),
-	    NS_VALSTR_STRUCT(SIGABRT),
-	    NS_VALSTR_STRUCT(SIGFPE),
-	    NS_VALSTR_STRUCT(SIGSEGV),
-	    NS_VALSTR_STRUCT(SIGTERM),
 	    NS_VALSTR_STRUCT(SIGHUP),
+	    NS_VALSTR_STRUCT(SIGINT),
 	    NS_VALSTR_STRUCT(SIGQUIT),
+	    NS_VALSTR_STRUCT(SIGILL),
 	    NS_VALSTR_STRUCT(SIGTRAP),
-	    NS_VALSTR_STRUCT(SIGKILL),
+	    NS_VALSTR_STRUCT(SIGABRT),
+	    NS_VALSTR_STRUCT(SIGIOT),
 	    NS_VALSTR_STRUCT(SIGBUS),
-	    NS_VALSTR_STRUCT(SIGSYS),
+	    NS_VALSTR_STRUCT(SIGFPE),
+	    NS_VALSTR_STRUCT(SIGKILL),
+	    NS_VALSTR_STRUCT(SIGUSR1),
+	    NS_VALSTR_STRUCT(SIGSEGV),
+	    NS_VALSTR_STRUCT(SIGUSR2),
 	    NS_VALSTR_STRUCT(SIGPIPE),
 	    NS_VALSTR_STRUCT(SIGALRM),
-	    NS_VALSTR_STRUCT(SIGURG),
+	    NS_VALSTR_STRUCT(SIGTERM),
+	    NS_VALSTR_STRUCT(SIGSTKFLT),
+	    NS_VALSTR_STRUCT(SIGCHLD),
+	    NS_VALSTR_STRUCT(SIGCONT),
 	    NS_VALSTR_STRUCT(SIGSTOP),
 	    NS_VALSTR_STRUCT(SIGTSTP),
-	    NS_VALSTR_STRUCT(SIGCONT),
-	    NS_VALSTR_STRUCT(SIGCHLD),
 	    NS_VALSTR_STRUCT(SIGTTIN),
 	    NS_VALSTR_STRUCT(SIGTTOU),
-	    NS_VALSTR_STRUCT(SIGPOLL),
+	    NS_VALSTR_STRUCT(SIGURG),
 	    NS_VALSTR_STRUCT(SIGXCPU),
 	    NS_VALSTR_STRUCT(SIGXFSZ),
 	    NS_VALSTR_STRUCT(SIGVTALRM),
 	    NS_VALSTR_STRUCT(SIGPROF),
-	    NS_VALSTR_STRUCT(SIGUSR1),
-	    NS_VALSTR_STRUCT(SIGUSR2),
 	    NS_VALSTR_STRUCT(SIGWINCH),
+	    NS_VALSTR_STRUCT(SIGPOLL),
+	    NS_VALSTR_STRUCT(SIGPWR),
+	    NS_VALSTR_STRUCT(SIGSYS),
 	};
 
 	for (const auto& i : sigNames) {
@@ -283,7 +303,7 @@ const std::string sigName(int signo) {
 		}
 	}
 
-	if (signo > SIGRTMIN) {
+	if (signo >= SIGRTMIN) {
 		res.append("SIG");
 		res.append(std::to_string(signo));
 		res.append("-RTMIN+");
@@ -295,6 +315,44 @@ const std::string sigName(int signo) {
 	res.append(std::to_string(signo));
 	res.append(")");
 	return res;
+}
+
+const std::string rLimName(int res) {
+	std::string ret;
+
+	struct {
+		const int res;
+		const char* const name;
+	} static const rLimNames[] = {
+	    NS_VALSTR_STRUCT(RLIMIT_CPU),
+	    NS_VALSTR_STRUCT(RLIMIT_FSIZE),
+	    NS_VALSTR_STRUCT(RLIMIT_DATA),
+	    NS_VALSTR_STRUCT(RLIMIT_STACK),
+	    NS_VALSTR_STRUCT(RLIMIT_CORE),
+	    NS_VALSTR_STRUCT(RLIMIT_RSS),
+	    NS_VALSTR_STRUCT(RLIMIT_NOFILE),
+	    NS_VALSTR_STRUCT(RLIMIT_AS),
+	    NS_VALSTR_STRUCT(RLIMIT_NPROC),
+	    NS_VALSTR_STRUCT(RLIMIT_MEMLOCK),
+	    NS_VALSTR_STRUCT(RLIMIT_LOCKS),
+	    NS_VALSTR_STRUCT(RLIMIT_SIGPENDING),
+	    NS_VALSTR_STRUCT(RLIMIT_MSGQUEUE),
+	    NS_VALSTR_STRUCT(RLIMIT_NICE),
+	    NS_VALSTR_STRUCT(RLIMIT_RTPRIO),
+	    NS_VALSTR_STRUCT(RLIMIT_RTTIME),
+	};
+
+	for (const auto& i : rLimNames) {
+		if (res == i.res) {
+			ret.append(i.name);
+			return ret;
+		}
+	}
+
+	ret.append("RLIMITUNKNOWN(");
+	ret.append(std::to_string(res));
+	ret.append(")");
+	return ret;
 }
 
 const std::string timeToStr(time_t t) {
@@ -319,6 +377,14 @@ std::vector<std::string> strSplit(const std::string str, char delim) {
 long syscall(long sysno, uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4,
     uintptr_t a5) {
 	return ::syscall(sysno, a0, a1, a2, a3, a4, a5);
+}
+
+long setrlimit(int res, const struct rlimit64& newlim) {
+	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t)&newlim, (uintptr_t) nullptr);
+}
+
+long getrlimit(int res, struct rlimit64* curlim) {
+	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t) nullptr, (uintptr_t)curlim);
 }
 
 }  // namespace util

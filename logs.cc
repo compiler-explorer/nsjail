@@ -55,6 +55,9 @@ static void setDupLogFdOr(int fd, int orfd) {
 		_log_fd = orfd;
 	}
 	_log_fd_isatty = (isatty(_log_fd) == 1);
+	if (getenv("NO_COLOR")) {
+		_log_fd_isatty = false;
+	}
 	errno = saved_errno;
 }
 
@@ -70,8 +73,12 @@ bool logSet() {
 	return _log_set;
 }
 
-void logLevel(enum llevel_t ll) {
+void setLogLevel(enum llevel_t ll) {
 	_log_level = ll;
+}
+
+enum llevel_t getLogLevel(void) {
+	return _log_level;
 }
 
 void logFile(const std::string& log_file, int log_fd) {
@@ -156,9 +163,7 @@ void logMsg(enum llevel_t ll, const char* fn, int ln, bool perr, const char* fmt
 	msg.append("\n");
 	/* End printing logs */
 
-	if (write(_log_fd, msg.c_str(), msg.size()) == -1) {
-		dprintf(_log_fd, "%s", msg.c_str());
-	}
+	TEMP_FAILURE_RETRY(write(_log_fd, msg.c_str(), msg.size()));
 
 	if (ll == FATAL) {
 		exit(0xff);

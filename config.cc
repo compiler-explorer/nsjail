@@ -46,7 +46,7 @@
 
 namespace config {
 
-static uint64_t configRLimit(
+static uint64_t adjustRLimit(
     int res, const nsjail::RLimit& rl, const uint64_t val, unsigned long mul = 1UL) {
 	if (rl == nsjail::RLimit::VALUE) {
 		return (val * mul);
@@ -64,7 +64,7 @@ static uint64_t configRLimit(
 	abort();
 }
 
-static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
+static bool parseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
 	switch (njc.mode()) {
 	case nsjail::Mode::LISTEN:
 		nsjconf->mode = MODE_LISTEN_TCP;
@@ -86,6 +86,7 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->cwd = njc.cwd();
 	nsjconf->port = njc.port();
 	nsjconf->bindhost = njc.bindhost();
+	nsjconf->max_conns = njc.max_conns();
 	nsjconf->max_conns_per_ip = njc.max_conns_per_ip();
 	nsjconf->tlimit = njc.time_limit();
 	nsjconf->max_cpus = njc.max_cpus();
@@ -101,19 +102,19 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	if (njc.has_log_level()) {
 		switch (njc.log_level()) {
 		case nsjail::LogLevel::DEBUG:
-			logs::logLevel(logs::DEBUG);
+			logs::setLogLevel(logs::DEBUG);
 			break;
 		case nsjail::LogLevel::INFO:
-			logs::logLevel(logs::INFO);
+			logs::setLogLevel(logs::INFO);
 			break;
 		case nsjail::LogLevel::WARNING:
-			logs::logLevel(logs::WARNING);
+			logs::setLogLevel(logs::WARNING);
 			break;
 		case nsjail::LogLevel::ERROR:
-			logs::logLevel(logs::ERROR);
+			logs::setLogLevel(logs::ERROR);
 			break;
 		case nsjail::LogLevel::FATAL:
-			logs::logLevel(logs::FATAL);
+			logs::setLogLevel(logs::FATAL);
 			break;
 		default:
 			LOG_E("Unknown log_level: %d", njc.log_level());
@@ -146,17 +147,24 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->disable_no_new_privs = njc.disable_no_new_privs();
 
 	nsjconf->rl_as =
-	    configRLimit(RLIMIT_AS, njc.rlimit_as_type(), njc.rlimit_as(), 1024UL * 1024UL);
+	    adjustRLimit(RLIMIT_AS, njc.rlimit_as_type(), njc.rlimit_as(), 1024UL * 1024UL);
 	nsjconf->rl_core =
-	    configRLimit(RLIMIT_CORE, njc.rlimit_core_type(), njc.rlimit_core(), 1024UL * 1024UL);
-	nsjconf->rl_cpu = configRLimit(RLIMIT_CPU, njc.rlimit_cpu_type(), njc.rlimit_cpu());
-	nsjconf->rl_fsize = configRLimit(
+	    adjustRLimit(RLIMIT_CORE, njc.rlimit_core_type(), njc.rlimit_core(), 1024UL * 1024UL);
+	nsjconf->rl_cpu = adjustRLimit(RLIMIT_CPU, njc.rlimit_cpu_type(), njc.rlimit_cpu());
+	nsjconf->rl_fsize = adjustRLimit(
 	    RLIMIT_FSIZE, njc.rlimit_fsize_type(), njc.rlimit_fsize(), 1024UL * 1024UL);
 	nsjconf->rl_nofile =
-	    configRLimit(RLIMIT_NOFILE, njc.rlimit_nofile_type(), njc.rlimit_nofile());
-	nsjconf->rl_nproc = configRLimit(RLIMIT_NPROC, njc.rlimit_nproc_type(), njc.rlimit_nproc());
-	nsjconf->rl_stack = configRLimit(
+	    adjustRLimit(RLIMIT_NOFILE, njc.rlimit_nofile_type(), njc.rlimit_nofile());
+	nsjconf->rl_nproc = adjustRLimit(RLIMIT_NPROC, njc.rlimit_nproc_type(), njc.rlimit_nproc());
+	nsjconf->rl_stack = adjustRLimit(
 	    RLIMIT_STACK, njc.rlimit_stack_type(), njc.rlimit_stack(), 1024UL * 1024UL);
+	nsjconf->rl_mlock =
+	    adjustRLimit(RLIMIT_MEMLOCK, njc.rlimit_memlock_type(), njc.rlimit_memlock(), 1024UL);
+	nsjconf->rl_rtpr =
+	    adjustRLimit(RLIMIT_RTPRIO, njc.rlimit_rtprio_type(), njc.rlimit_rtprio());
+	nsjconf->rl_msgq =
+	    adjustRLimit(RLIMIT_MSGQUEUE, njc.rlimit_msgqueue_type(), njc.rlimit_msgqueue());
+
 	nsjconf->disable_rl = njc.disable_rl();
 
 	if (njc.persona_addr_compat_layout()) {
@@ -182,6 +190,9 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->clone_newipc = njc.clone_newipc();
 	nsjconf->clone_newuts = njc.clone_newuts();
 	nsjconf->clone_newcgroup = njc.clone_newcgroup();
+	nsjconf->clone_newtime = njc.clone_newtime();
+
+	nsjconf->no_pivotroot = njc.no_pivotroot();
 
 	for (ssize_t i = 0; i < njc.uidmap_size(); i++) {
 		if (!user::parseId(nsjconf, njc.uidmap(i).inside_id(), njc.uidmap(i).outside_id(),
@@ -240,6 +251,8 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->nice_level = njc.nice_level();
 
 	nsjconf->cgroup_mem_max = njc.cgroup_mem_max();
+	nsjconf->cgroup_mem_memsw_max = njc.cgroup_mem_memsw_max();
+	nsjconf->cgroup_mem_swap_max = njc.cgroup_mem_swap_max();
 	nsjconf->cgroup_mem_mount = njc.cgroup_mem_mount();
 	nsjconf->cgroup_mem_parent = njc.cgroup_mem_parent();
 	nsjconf->cgroup_pids_max = njc.cgroup_pids_max();
@@ -253,6 +266,7 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->cgroup_cpu_parent = njc.cgroup_cpu_parent();
 	nsjconf->cgroupv2_mount = njc.cgroupv2_mount();
 	nsjconf->use_cgroupv2 = njc.use_cgroupv2();
+	nsjconf->detect_cgroupv2 = njc.detect_cgroupv2();
 
 	nsjconf->iface_lo = !(njc.iface_no_lo());
 	for (ssize_t i = 0; i < njc.iface_own().size(); i++) {
@@ -265,6 +279,11 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	nsjconf->iface_vs_nm = njc.macvlan_vs_nm();
 	nsjconf->iface_vs_gw = njc.macvlan_vs_gw();
 	nsjconf->iface_vs_ma = njc.macvlan_vs_ma();
+	nsjconf->iface_vs_mo = njc.macvlan_vs_mo();
+
+	nsjconf->disable_tsc = njc.disable_tsc();
+
+	nsjconf->forward_signals = njc.forward_signals();
 
 	if (njc.has_exec_bin()) {
 		if (njc.exec_bin().has_path()) {
@@ -283,7 +302,7 @@ static bool configParseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& 
 	return true;
 }
 
-static void LogHandler(
+static void logHandler(
     google::protobuf::LogLevel level, const char* filename, int line, const std::string& message) {
 	LOG_W("config.cc: '%s'", message.c_str());
 }
@@ -297,7 +316,7 @@ bool parseFile(nsjconf_t* nsjconf, const char* file) {
 		return false;
 	}
 
-	SetLogHandler(LogHandler);
+	google::protobuf::SetLogHandler(logHandler);
 	google::protobuf::io::FileInputStream input(fd);
 	input.SetCloseOnDelete(true);
 
@@ -309,12 +328,12 @@ bool parseFile(nsjconf_t* nsjconf, const char* file) {
 		LOG_W("Couldn't parse file '%s' from Text into ProtoBuf", file);
 		return false;
 	}
-	if (!configParseInternal(nsjconf, nsc)) {
-		LOG_W("Couldn't parse the ProtoBuf");
+	if (!parseInternal(nsjconf, nsc)) {
+		LOG_W("Couldn't parse the ProtoBuf from '%s'", file);
 		return false;
 	}
 
-	LOG_D("Parsed config:\n'%s'", nsc.DebugString().c_str());
+	LOG_D("Parsed config from '%s':\n'%s'", file, nsc.DebugString().c_str());
 	return true;
 }
 

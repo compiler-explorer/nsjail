@@ -28,11 +28,25 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <cerrno>
 #include <string>
 
 #include "logs.h"
 #include "macros.h"
 #include "util.h"
+
+#if !defined(CAP_AUDIT_READ)
+#define CAP_AUDICAP_AUDIT_READ 37
+#endif /* !defined(CAP_AUDIT_READ) */
+#if !defined(CAP_PERFMON)
+#define CAP_PERFMON 38
+#endif /* !defined(CAP_PERFMON) */
+#if !defined(CAP_BPF)
+#define CAP_BPF 39
+#endif /* !defined(CAP_BPF) */
+#if !defined(CAP_CHECKPOINT_RESTORE)
+#define CAP_CHECKPOINT_RESTORE 40
+#endif /* !defined(CAP_CHECKPOINT_RESTORE) */
 
 namespace caps {
 
@@ -77,14 +91,15 @@ struct {
     NS_VALSTR_STRUCT(CAP_SYSLOG),
     NS_VALSTR_STRUCT(CAP_WAKE_ALARM),
     NS_VALSTR_STRUCT(CAP_BLOCK_SUSPEND),
-#if defined(CAP_AUDIT_READ)
     NS_VALSTR_STRUCT(CAP_AUDIT_READ),
-#endif /* defined(CAP_AUDIT_READ) */
+    NS_VALSTR_STRUCT(CAP_PERFMON),
+    NS_VALSTR_STRUCT(CAP_BPF),
+    NS_VALSTR_STRUCT(CAP_CHECKPOINT_RESTORE),
 };
 
 int nameToVal(const char* name) {
 	for (const auto& cap : capNames) {
-		if (strcmp(name, cap.name) == 0) {
+		if (util::StrEq(name, cap.name)) {
 			return cap.val;
 		}
 	}
@@ -100,9 +115,7 @@ static const std::string capToStr(int val) {
 	}
 
 	std::string res;
-	res.append("CAP_UNKNOWN(");
-	res.append(std::to_string(val));
-	res.append(")");
+	res.append("CAP_UNKNOWN(").append(std::to_string(val)).append(")");
 	return res;
 }
 
@@ -114,7 +127,7 @@ static cap_user_data_t getCaps() {
 	};
 	if (util::syscall(__NR_capget, (uintptr_t)&cap_hdr, (uintptr_t)&cap_data) == -1) {
 		PLOG_W("capget() failed");
-		return NULL;
+		return nullptr;
 	}
 	return cap_data;
 }
@@ -201,7 +214,7 @@ static bool initNsKeepCaps(cap_user_data_t cap_data) {
 
 bool initNs(nsjconf_t* nsjconf) {
 	cap_user_data_t cap_data = getCaps();
-	if (cap_data == NULL) {
+	if (cap_data == nullptr) {
 		return false;
 	}
 
@@ -245,6 +258,11 @@ bool initNs(nsjconf_t* nsjconf) {
 	if (getEffective(cap_data, CAP_SETPCAP)) {
 		for (const auto& i : capNames) {
 			if (getInheritable(cap_data, i.val)) {
+				continue;
+			}
+			if (prctl(PR_CAPBSET_READ, (unsigned long)i.val, 0UL, 0UL, 0UL) == -1 &&
+			    errno == EINVAL) {
+				LOG_D("Skipping unsupported capability: %s", i.name);
 				continue;
 			}
 			dbgmsg.append(" ").append(i.name);

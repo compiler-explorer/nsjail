@@ -48,12 +48,13 @@ bool initNs(nsjconf_t* nsjconf) {
 	 * first clone/fork will work, and the rest will fail with ENOMEM (see 'man pid_namespaces'
 	 * for details on this behavior)
 	 */
-	pid_t pid = subproc::cloneProc(CLONE_FS);
+	pid_t pid = subproc::cloneProc(CLONE_FS, 0);
 	if (pid == -1) {
 		PLOG_E("Couldn't create a dummy init process");
 		return false;
 	}
 	if (pid > 0) {
+		LOG_D("Created a dummy 'init' process with PID=%d", pid);
 		return true;
 	}
 
@@ -68,7 +69,7 @@ bool initNs(nsjconf_t* nsjconf) {
 	}
 
 	/* Act sort-a like a init by reaping zombie processes */
-	struct sigaction sa;
+	struct sigaction sa = {};
 	sa.sa_handler = SIG_DFL;
 	sa.sa_flags = SA_NOCLDWAIT | SA_NOCLDSTOP;
 	sa.sa_restorer = NULL;

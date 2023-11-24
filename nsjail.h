@@ -86,6 +86,7 @@ struct pipemap_t {
 	int sock_fd;
 	int pipe_in;
 	int pipe_out;
+	pid_t pid;
 	bool operator==(const pipemap_t& o) {
 		return sock_fd == o.sock_fd && pipe_in == o.pipe_in && pipe_out == o.pipe_out;
 	}
@@ -114,20 +115,26 @@ struct nsjconf_t {
 	uint64_t rl_nofile;
 	uint64_t rl_nproc;
 	uint64_t rl_stack;
+	uint64_t rl_mlock;
+	uint64_t rl_rtpr;
+	uint64_t rl_msgq;
 	bool disable_rl;
 	unsigned long personality;
 	bool clone_newnet;
 	bool clone_newuser;
 	bool clone_newns;
+	bool no_pivotroot;
 	bool clone_newpid;
 	bool clone_newipc;
 	bool clone_newuts;
 	bool clone_newcgroup;
+	bool clone_newtime;
 	enum ns_mode_t mode;
 	bool is_root_rw;
 	bool is_silent;
 	bool stderr_to_null;
 	bool skip_setsid;
+	unsigned int max_conns;
 	unsigned int max_conns_per_ip;
 	std::string proc_path;
 	bool is_proc_rw;
@@ -137,9 +144,14 @@ struct nsjconf_t {
 	std::string iface_vs_nm;
 	std::string iface_vs_gw;
 	std::string iface_vs_ma;
+	std::string iface_vs_mo;
+	bool disable_tsc;
+	bool forward_signals;
 	std::string cgroup_mem_mount;
 	std::string cgroup_mem_parent;
 	size_t cgroup_mem_max;
+	size_t cgroup_mem_memsw_max;
+	ssize_t cgroup_mem_swap_max;
 	std::string cgroup_pids_mount;
 	std::string cgroup_pids_parent;
 	unsigned int cgroup_pids_max;
@@ -151,12 +163,12 @@ struct nsjconf_t {
 	unsigned int cgroup_cpu_ms_per_sec;
 	std::string cgroupv2_mount;
 	bool use_cgroupv2;
+	bool detect_cgroupv2;
 	std::string kafel_file_path;
 	std::string kafel_string;
 	struct sock_fprog seccomp_fprog;
 	bool seccomp_log;
 	int nice_level;
-	long num_cpus;
 	uid_t orig_uid;
 	uid_t orig_euid;
 	std::vector<mount_t> mountpts;

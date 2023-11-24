@@ -34,10 +34,12 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cerrno>
 #include <memory>
 #include <vector>
 
+#include "cgroup2.h"
 #include "cmdline.h"
 #include "logs.h"
 #include "macros.h"
@@ -48,8 +50,8 @@
 
 namespace nsjail {
 
-static __thread int sigFatal = 0;
-static __thread bool showProc = false;
+static __thread std::atomic<int> sigFatal(0);
+static __thread std::atomic<bool> showProc(false);
 
 static void sigHandler(int sig) {
 	if (sig == SIGALRM || sig == SIGCHLD || sig == SIGPIPE) {
@@ -166,7 +168,9 @@ static bool pipeTraffic(nsjconf_t* nsjconf, int listenfd) {
 			const char* direction;
 			bool closed = false;
 			std::tuple<int, int, const char*> direction_map[] = {
-			    {i, i + 1, "in"}, {i + 2, i, "out"}};
+			    std::make_tuple(i, i + 1, "in"),
+			    std::make_tuple(i + 2, i, "out"),
+			};
 			for (const auto& entry : direction_map) {
 				std::tie(in, out, direction) = entry;
 				bool in_ready = (fds[in].events & POLLIN) == 0 ||
@@ -198,6 +202,9 @@ static bool pipeTraffic(nsjconf_t* nsjconf, int listenfd) {
 				close(nsjconf->pipes[pipe_no].sock_fd);
 				close(nsjconf->pipes[pipe_no].pipe_in);
 				close(nsjconf->pipes[pipe_no].pipe_out);
+				if (nsjconf->pipes[pipe_no].pid > 0) {
+					kill(nsjconf->pipes[pipe_no].pid, SIGKILL);
+				}
 				nsjconf->pipes[pipe_no] = {};
 			}
 		}
@@ -217,7 +224,8 @@ static int listenMode(nsjconf_t* nsjconf) {
 	}
 	for (;;) {
 		if (sigFatal > 0) {
-			subproc::killAndReapAll(nsjconf);
+			subproc::killAndReapAll(
+			    nsjconf, nsjconf->forward_signals ? sigFatal.load() : SIGKILL);
 			logs::logStop(sigFatal);
 			close(listenfd);
 			return EXIT_SUCCESS;
@@ -235,14 +243,25 @@ static int listenMode(nsjconf_t* nsjconf) {
 					PLOG_E("pipe");
 					continue;
 				}
-				nsjconf->pipes.push_back({
-				    .sock_fd = connfd,
-				    .pipe_in = in[1],
-				    .pipe_out = out[0],
-				});
-				subproc::runChild(nsjconf, connfd, in[0], out[1], out[1]);
+
+				pid_t pid =
+				    subproc::runChild(nsjconf, connfd, in[0], out[1], out[1]);
+
 				close(in[0]);
 				close(out[1]);
+
+				if (pid <= 0) {
+					close(in[1]);
+					close(out[0]);
+					close(connfd);
+				} else {
+					nsjconf->pipes.push_back({
+					    .sock_fd = connfd,
+					    .pipe_in = in[1],
+					    .pipe_out = out[0],
+					    .pid = pid,
+					});
+				}
 			}
 		}
 		subproc::reapProc(nsjconf);
@@ -251,8 +270,8 @@ static int listenMode(nsjconf_t* nsjconf) {
 
 static int standaloneMode(nsjconf_t* nsjconf) {
 	for (;;) {
-		if (!subproc::runChild(
-			nsjconf, /* netfd= */ -1, STDIN_FILENO, STDOUT_FILENO, STDERR_FILENO)) {
+		if (subproc::runChild(nsjconf, /* netfd= */ -1, STDIN_FILENO, STDOUT_FILENO,
+			STDERR_FILENO) == -1) {
 			LOG_E("Couldn't launch the child process");
 			return 0xff;
 		}
@@ -269,7 +288,8 @@ static int standaloneMode(nsjconf_t* nsjconf) {
 				subproc::displayProc(nsjconf);
 			}
 			if (sigFatal > 0) {
-				subproc::killAndReapAll(nsjconf);
+				subproc::killAndReapAll(
+				    nsjconf, nsjconf->forward_signals ? sigFatal.load() : SIGKILL);
 				logs::logStop(sigFatal);
 				return (128 + sigFatal);
 			}
@@ -323,6 +343,19 @@ int main(int argc, char* argv[]) {
 	if (!nsjail::setTimer(nsjconf.get())) {
 		LOG_F("nsjail::setTimer() failed");
 	}
+
+	if (nsjconf->detect_cgroupv2) {
+		cgroup2::detectCgroupv2(nsjconf.get());
+		LOG_I("Detected cgroups version: %d", nsjconf->use_cgroupv2 ? 2 : 1);
+	}
+
+	if (nsjconf->use_cgroupv2) {
+		if (!cgroup2::setup(nsjconf.get())) {
+			LOG_E("Couldn't setup parent cgroup (cgroupv2)");
+			return -1;
+		}
+	}
+
 	if (!sandbox::preparePolicy(nsjconf.get())) {
 		LOG_F("Couldn't prepare sandboxing policy");
 	}

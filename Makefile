@@ -16,7 +16,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-PKG_CONFIG=$(shell which pkg-config)
+PKG_CONFIG=$(shell command -v pkg-config 2> /dev/null)
 ifeq ($(PKG_CONFIG),)
 $(error "Install pkg-config to make it work")
 endif
@@ -32,12 +32,13 @@ COMMON_FLAGS += -O2 -c \
 	-Ikafel/include
 
 CXXFLAGS += $(USER_DEFINES) $(COMMON_FLAGS) $(shell pkg-config --cflags protobuf) \
-	-std=c++11 -fno-exceptions -Wno-unused -Wno-unused-parameter
+	-std=c++17 -fno-exceptions -Wno-unused -Wno-unused-parameter
 LDFLAGS += -pie -Wl,-z,noexecstack -lpthread $(shell pkg-config --libs protobuf)
 
 BIN = nsjail
 LIBS = kafel/libkafel.a
 SRCS_CXX = caps.cc cgroup.cc cgroup2.cc cmdline.cc config.cc contain.cc cpu.cc logs.cc mnt.cc net.cc nsjail.cc pid.cc sandbox.cc subproc.cc uts.cc user.cc util.cc
+SRCS_H = $(SRCS_CXX:.cc=.h) macros.h
 SRCS_PROTO = config.proto
 SRCS_PB_CXX = $(SRCS_PROTO:.proto=.pb.cc)
 SRCS_PB_H = $(SRCS_PROTO:.proto=.pb.h)
@@ -56,7 +57,7 @@ endif
 
 .PHONY: all clean depend indent
 
-.cc.o: %.cc
+.o: %.cc
 	$(CXX) $(CXXFLAGS) $< -o $@
 
 all: $(BIN)
@@ -76,18 +77,19 @@ ifeq ("$(wildcard kafel/Makefile)","")
 endif
 
 kafel/include/kafel.h: kafel_init
+# LDFLAGS is unset as a workaround for Kafel using the parent LDFLAGS
+# incorrectly.
 kafel/libkafel.a: kafel_init
-	$(MAKE) -C kafel
+	LDFLAGS="" CFLAGS=-fPIE $(MAKE) -C kafel
 
 # Sequence of proto deps, which doesn't fit automatic make rules
-config.o: $(SRCS_PB_O) $(SRCS_PB_H)
-$(SRCS_PB_O): $(SRCS_PB_CXX) $(SRCS_PB_H)
+$(SRCS_PB_O): $(SRCS_PB_H) $(SRCS_PB_CXX)
 $(SRCS_PB_CXX) $(SRCS_PB_H): $(SRCS_PROTO)
 	protoc --cpp_out=. $(SRCS_PROTO)
 
 .PHONY: clean
 clean:
-	$(RM) core Makefile.bak $(OBJS) $(SRCS_PB_CXX) $(SRCS_PB_H) $(BIN)
+	$(RM) core Makefile.bak $(OBJS) $(SRCS_PB_CXX) $(SRCS_PB_H) $(SRCS_PB_O) $(BIN)
 ifneq ("$(wildcard kafel/Makefile)","")
 	$(MAKE) -C kafel clean
 endif
@@ -98,8 +100,7 @@ depend: all
 
 .PHONY: indent
 indent:
-	clang-format -style="{BasedOnStyle: google, IndentWidth: 8, UseTab: Always, IndentCaseLabels: false, ColumnLimit: 100, AlignAfterOpenBracket: false, AllowShortFunctionsOnASingleLine: false}" -i -sort-includes *.h $(SRCS_CXX)
-	clang-format -style="{BasedOnStyle: google, IndentWidth: 4, UseTab: Always, ColumnLimit: 100}" -i $(SRCS_PROTO)
+	clang-format -i -sort-includes $(SRCS_H) $(SRCS_CXX) $(SRCS_PROTO)
 
 # DO NOT DELETE THIS LINE -- make depend depends on it.
 
@@ -116,7 +117,8 @@ cpu.o: cpu.h nsjail.h logs.h util.h
 logs.o: logs.h macros.h util.h nsjail.h
 mnt.o: mnt.h nsjail.h logs.h macros.h subproc.h util.h
 net.o: net.h nsjail.h logs.h subproc.h
-nsjail.o: nsjail.h cmdline.h logs.h macros.h net.h sandbox.h subproc.h util.h
+nsjail.o: nsjail.h cgroup2.h cmdline.h logs.h macros.h net.h sandbox.h
+nsjail.o: subproc.h util.h
 pid.o: pid.h nsjail.h logs.h subproc.h
 sandbox.o: sandbox.h nsjail.h kafel/include/kafel.h logs.h util.h
 subproc.o: subproc.h nsjail.h cgroup.h cgroup2.h contain.h logs.h macros.h
