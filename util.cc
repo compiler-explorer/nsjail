@@ -40,6 +40,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -67,7 +68,7 @@ ssize_t readFromFd(int fd, void* buf, size_t len) {
 ssize_t readFromFile(const char* fname, void* buf, size_t len) {
 	int fd = TEMP_FAILURE_RETRY(open(fname, O_RDONLY | O_CLOEXEC));
 	if (fd == -1) {
-		LOG_E("open('%s', O_RDONLY|O_CLOEXEC)", fname);
+		LOG_E("open(%s, O_RDONLY|O_CLOEXEC)", QC(fname));
 		return -1;
 	}
 	ssize_t ret = readFromFd(fd, buf, len);
@@ -89,21 +90,49 @@ bool writeToFd(int fd, const void* buf, size_t len) {
 	return true;
 }
 
+bool readFromFileToStr(const char* fname, std::string* str) {
+	std::fstream fs(fname, std::ios::in | std::ios::binary);
+	if (!fs.is_open()) {
+		PLOG_W("Couldn't open file %s", QC(fname));
+		return false;
+	}
+
+	str->clear();
+
+	while (fs) {
+		char buf[4096];
+		fs.read(buf, sizeof(buf));
+		std::streamsize sz = fs.gcount();
+		if (sz > 0) {
+			str->append(buf, sz);
+		}
+		if (fs.eof()) {
+			return true;
+		}
+		if (fs.bad() || fs.fail()) {
+			PLOG_W("Reading from %s failed", QC(fname));
+			return false;
+		}
+	}
+
+	return true;
+}
+
 bool writeBufToFile(
     const char* filename, const void* buf, size_t len, int open_flags, bool log_errors) {
 	int fd;
 	TEMP_FAILURE_RETRY(fd = open(filename, open_flags, 0644));
 	if (fd == -1) {
 		if (log_errors) {
-			PLOG_E("Couldn't open '%s' for writing", filename);
+			PLOG_E("Couldn't open %s for writing", QC(filename));
 		}
 		return false;
 	}
 
 	if (!writeToFd(fd, buf, len)) {
 		if (log_errors) {
-			PLOG_E(
-			    "Couldn't write '%zu' bytes to file '%s' (fd='%d')", len, filename, fd);
+			PLOG_E("Couldn't write '%zu' bytes to file %s (fd='%d')", len, QC(filename),
+			    fd);
 		}
 		close(fd);
 		if (open_flags & O_CREAT) {
@@ -112,7 +141,7 @@ bool writeBufToFile(
 		return false;
 	}
 
-	LOG_D("Written '%zu' bytes to '%s'", len, filename);
+	LOG_D("Written '%zu' bytes to %s", len, QC(filename));
 
 	close(fd);
 	return true;
@@ -146,14 +175,14 @@ bool createDirRecursively(const char* dir) {
 		*next = '\0';
 
 		if (mkdirat(prev_dir_fd, curr, 0755) == -1 && errno != EEXIST) {
-			PLOG_W("mkdir('%s', 0755)", curr);
+			PLOG_W("mkdir(%s, 0755)", QC(curr));
 			close(prev_dir_fd);
 			return false;
 		}
 
 		int dir_fd = TEMP_FAILURE_RETRY(openat(prev_dir_fd, curr, O_DIRECTORY | O_CLOEXEC));
 		if (dir_fd == -1) {
-			PLOG_W("openat('%d', '%s', O_DIRECTORY | O_CLOEXEC)", prev_dir_fd, curr);
+			PLOG_W("openat('%d', %s, O_DIRECTORY | O_CLOEXEC)", prev_dir_fd, QC(curr));
 			close(prev_dir_fd);
 			return false;
 		}
@@ -380,11 +409,12 @@ long syscall(long sysno, uintptr_t a0, uintptr_t a1, uintptr_t a2, uintptr_t a3,
 }
 
 long setrlimit(int res, const struct rlimit64& newlim) {
-	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t)&newlim, (uintptr_t) nullptr);
+	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t)&newlim, (uintptr_t)nullptr);
 }
 
 long getrlimit(int res, struct rlimit64* curlim) {
-	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t) nullptr, (uintptr_t)curlim);
+	*curlim = {};
+	return util::syscall(__NR_prlimit64, 0, res, (uintptr_t)nullptr, (uintptr_t)curlim);
 }
 
 }  // namespace util

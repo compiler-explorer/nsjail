@@ -202,7 +202,7 @@ static void newProc(nsjconf_t* nsjconf, int netfd, int fd_in, int fd_out, int fd
 	}
 
 	auto connstr = net::connToText(netfd, /* remote= */ true, NULL);
-	LOG_I("Executing %s for '%s'", util::StrQuote(nsjconf->exec_file).c_str(), connstr.c_str());
+	LOG_I("Executing %s for '%s'", QC(nsjconf->exec_file), connstr.c_str());
 
 	std::vector<const char*> argv;
 	for (const auto& s : nsjconf->argv) {
@@ -210,8 +210,7 @@ static void newProc(nsjconf_t* nsjconf, int netfd, int fd_in, int fd_out, int fd
 	}
 	argv.push_back(nullptr);
 
-	LOG_D("Exec: %s, Args: [%s]", util::StrQuote(nsjconf->exec_file).c_str(),
-	    concatArgs(argv).c_str());
+	LOG_D("Exec: %s, Args: [%s]", QC(nsjconf->exec_file), concatArgs(argv).c_str());
 
 	/* Should be the last one in the sequence */
 	if (!sandbox::applyPolicy(nsjconf)) {
@@ -220,7 +219,7 @@ static void newProc(nsjconf_t* nsjconf, int netfd, int fd_in, int fd_out, int fd
 
 	if (nsjconf->use_execveat) {
 #if defined(__NR_execveat)
-		util::syscall(__NR_execveat, nsjconf->exec_fd, (uintptr_t) "",
+		util::syscall(__NR_execveat, nsjconf->exec_fd, (uintptr_t)"",
 		    (uintptr_t)argv.data(), (uintptr_t)environ, AT_EMPTY_PATH);
 #else  /* defined(__NR_execveat) */
 		LOG_E("Your system doesn't support execveat() syscall");

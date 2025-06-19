@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <google/protobuf/io/zero_copy_stream_impl.h>
 #include <google/protobuf/text_format.h>
+#include <google/protobuf/util/json_util.h>
 #include <stdio.h>
 #include <sys/mount.h>
 #include <sys/personality.h>
@@ -31,9 +32,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
-#include <fstream>
+#include <list>
 #include <string>
-#include <vector>
 
 #include "caps.h"
 #include "cmdline.h"
@@ -234,8 +234,7 @@ static bool parseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
 
 		if (!mnt::addMountPtTail(nsjconf, src, dst, fstype, options, flags, is_dir,
 			is_mandatory, src_env, dst_env, src_content, is_symlink)) {
-			LOG_E("Couldn't add mountpoint for src:'%s' dst:'%s'", src.c_str(),
-			    dst.c_str());
+			LOG_E("Couldn't add mountpoint for src:%s dst:%s", QC(src), QC(dst));
 			return false;
 		}
 	}
@@ -302,39 +301,83 @@ static bool parseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
 	return true;
 }
 
+#if defined(GOOGLE_PROTOBUF_VERSION) && GOOGLE_PROTOBUF_VERSION < 4000000
+#define NSJAIL_HAS_PROTOBUF_LOG_HANDLER 1
+#else
+#define NSJAIL_HAS_PROTOBUF_LOG_HANDLER 0
+#endif
+
+static std::list<std::string> error_messages;
+
+#if NSJAIL_HAS_PROTOBUF_LOG_HANDLER
 static void logHandler(
     google::protobuf::LogLevel level, const char* filename, int line, const std::string& message) {
-	LOG_W("config.cc: '%s'", message.c_str());
+	error_messages.push_back(message);
+}
+#endif /* NSJAIL_HAS_PROTOBUF_LOG_HANDLER */
+
+static void flushLog() {
+	for (auto message : error_messages) {
+		LOG_W("ProtoTextFormat: %s", message.c_str());
+	}
+	error_messages.clear();
 }
 
 bool parseFile(nsjconf_t* nsjconf, const char* file) {
-	LOG_D("Parsing configuration from '%s'", file);
+	LOG_D("Parsing configuration from %s", QC(file));
 
-	int fd = TEMP_FAILURE_RETRY(open(file, O_RDONLY | O_CLOEXEC));
-	if (fd == -1) {
-		PLOG_W("Couldn't open config file '%s'", file);
+	std::string conf;
+	if (!util::readFromFileToStr(file, &conf)) {
+		LOG_E("Couldn't read config file %s", QC(file));
 		return false;
 	}
-
-	google::protobuf::SetLogHandler(logHandler);
-	google::protobuf::io::FileInputStream input(fd);
-	input.SetCloseOnDelete(true);
+	if (conf.empty()) {
+		LOG_E("Config file %s is empty", QC(file));
+		return false;
+	}
 
 	/* Use static so we can get c_str() pointers, and copy them into the nsjconf struct */
-	static nsjail::NsJailConfig nsc;
+	static nsjail::NsJailConfig json_nsc;
+	static nsjail::NsJailConfig text_nsc;
 
-	auto parser = google::protobuf::TextFormat::Parser();
-	if (!parser.Parse(&input, &nsc)) {
-		LOG_W("Couldn't parse file '%s' from Text into ProtoBuf", file);
+#if NSJAIL_HAS_PROTOBUF_LOG_HANDLER
+	google::protobuf::SetLogHandler(logHandler);
+#endif /* NSJAIL_HAS_PROTOBUF_LOG_HANDLER */
+	auto json_status = google::protobuf::util::JsonStringToMessage(conf, &json_nsc);
+	bool text_parsed = google::protobuf::TextFormat::ParseFromString(conf, &text_nsc);
+
+	if (json_status.ok() && text_parsed) {
+		LOG_W("Config file %s ambiguously parsed as TextProto and ProtoJSON", QC(file));
 		return false;
 	}
-	if (!parseInternal(nsjconf, nsc)) {
-		LOG_W("Couldn't parse the ProtoBuf from '%s'", file);
+
+	if (!json_status.ok() && !text_parsed) {
+		LOG_E("Config file %s failed to parse as either TextProto or ProtoJSON", QC(file));
+		flushLog();
+		LOG_W("ProtoJSON parse status: '%s'", json_status.ToString().c_str());
 		return false;
 	}
 
-	LOG_D("Parsed config from '%s':\n'%s'", file, nsc.DebugString().c_str());
-	return true;
+	if (json_status.ok() && !text_parsed) {
+		if (!parseInternal(nsjconf, json_nsc)) {
+			LOG_W("Couldn't parse the ProtoJSON from %s", QC(file));
+			return false;
+		}
+		LOG_D(
+		    "Parsed JSON config from %s:\n'%s'", QC(file), json_nsc.DebugString().c_str());
+		return true;
+	}
+
+	if (text_parsed && !json_status.ok()) {
+		if (!parseInternal(nsjconf, text_nsc)) {
+			LOG_W("Couldn't parse the TextProto from %s", QC(file));
+			return false;
+		}
+		LOG_D("Parsed TextProto config from %s:\n'%s'", QC(file),
+		    text_nsc.DebugString().c_str());
+		return true;
+	}
+	return false;
 }
 
 }  // namespace config
