@@ -225,6 +225,7 @@ static bool parseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
 		flags |= njc.mount(i).noexec() ? MS_NOEXEC : 0;
 		bool is_mandatory = njc.mount(i).mandatory();
 		bool is_symlink = njc.mount(i).is_symlink();
+		bool needs_mount_propagation = njc.mount(i).needs_mount_propagation();
 		std::string src_content = njc.mount(i).src_content();
 
 		mnt::isDir_t is_dir = mnt::NS_DIR_MAYBE;
@@ -233,7 +234,7 @@ static bool parseInternal(nsjconf_t* nsjconf, const nsjail::NsJailConfig& njc) {
 		}
 
 		if (!mnt::addMountPtTail(nsjconf, src, dst, fstype, options, flags, is_dir,
-			is_mandatory, src_env, dst_env, src_content, is_symlink)) {
+			is_mandatory, src_env, dst_env, src_content, is_symlink, needs_mount_propagation)) {
 			LOG_E("Couldn't add mountpoint for src:%s dst:%s", QC(src), QC(dst));
 			return false;
 		}

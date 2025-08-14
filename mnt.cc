@@ -386,9 +386,20 @@ static bool initCloneNs(nsjconf_t* nsjconf) {
 		return false;
 	}
 
-	/* Make changes to / (recursively) private, to avoid changing the global mount ns */
-	if (mount("/", "/", NULL, MS_REC | MS_PRIVATE, NULL) == -1) {
-		PLOG_E("mount('/', '/', NULL, MS_REC|MS_PRIVATE, NULL)");
+	bool needs_mount_propagation = false;
+	for (const auto& mpt : nsjconf->mountpts) {
+		if (mpt.needs_mount_propagation) {
+			needs_mount_propagation = true;
+			LOG_I("Mount %s requires propagation - using MS_SLAVE for root", mpt.dst.c_str());
+			break;
+		}
+	}
+
+	unsigned long propagation_flag = needs_mount_propagation ? MS_SLAVE : MS_PRIVATE;
+	const auto propagation_name = needs_mount_propagation ? "MS_SLAVE" : "MS_PRIVATE";
+
+	if (mount("/", "/", NULL, MS_REC | propagation_flag, NULL) == -1) {
+		PLOG_E("mount('/', '/', NULL, MS_REC|%s, NULL)", propagation_name);
 		return false;
 	}
 	if (mount(NULL, destdir->c_str(), "tmpfs", 0, "size=16777216") == -1) {
@@ -531,7 +542,7 @@ bool initNs(nsjconf_t* nsjconf) {
 static bool addMountPt(mount_t* mnt, const std::string& src, const std::string& dst,
     const std::string& fstype, const std::string& options, uintptr_t flags, isDir_t is_dir,
     bool is_mandatory, const std::string& src_env, const std::string& dst_env,
-    const std::string& src_content, bool is_symlink) {
+    const std::string& src_content, bool is_symlink, bool needs_mount_propagation) {
 	if (!src_env.empty()) {
 		const char* e = getenv(src_env.c_str());
 		if (e == nullptr) {
@@ -559,6 +570,7 @@ static bool addMountPt(mount_t* mnt, const std::string& src, const std::string& 
 	mnt->is_mandatory = is_mandatory;
 	mnt->mounted = false;
 	mnt->src_content = src_content;
+	mnt->needs_mount_propagation = needs_mount_propagation;
 
 	switch (is_dir) {
 	case NS_DIR_YES:
@@ -589,10 +601,10 @@ static bool addMountPt(mount_t* mnt, const std::string& src, const std::string& 
 bool addMountPtHead(nsjconf_t* nsjconf, const std::string& src, const std::string& dst,
     const std::string& fstype, const std::string& options, uintptr_t flags, isDir_t is_dir,
     bool is_mandatory, const std::string& src_env, const std::string& dst_env,
-    const std::string& src_content, bool is_symlink) {
+    const std::string& src_content, bool is_symlink, bool needs_mount_propagation) {
 	mount_t mnt;
 	if (!addMountPt(&mnt, src, dst, fstype, options, flags, is_dir, is_mandatory, src_env,
-		dst_env, src_content, is_symlink)) {
+		dst_env, src_content, is_symlink, needs_mount_propagation)) {
 		return false;
 	}
 	nsjconf->mountpts.insert(nsjconf->mountpts.begin(), mnt);
@@ -602,10 +614,10 @@ bool addMountPtHead(nsjconf_t* nsjconf, const std::string& src, const std::strin
 bool addMountPtTail(nsjconf_t* nsjconf, const std::string& src, const std::string& dst,
     const std::string& fstype, const std::string& options, uintptr_t flags, isDir_t is_dir,
     bool is_mandatory, const std::string& src_env, const std::string& dst_env,
-    const std::string& src_content, bool is_symlink) {
+    const std::string& src_content, bool is_symlink, bool needs_mount_propagation) {
 	mount_t mnt;
 	if (!addMountPt(&mnt, src, dst, fstype, options, flags, is_dir, is_mandatory, src_env,
-		dst_env, src_content, is_symlink)) {
+		dst_env, src_content, is_symlink, needs_mount_propagation)) {
 		return false;
 	}
 	nsjconf->mountpts.push_back(mnt);

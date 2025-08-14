@@ -57,6 +57,8 @@ message MountPt {
 	optional bool nodev = 14 [default = false];
 	/* Is it a noexec mount */
 	optional bool noexec = 15 [default = false];
+	/* Requires mount propagation for autofs/systemd mounts */
+	optional bool needs_mount_propagation = 16 [default = false];
 }
 enum RLimit {
 	VALUE = 0; /* Use the provided value */
