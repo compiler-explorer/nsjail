@@ -408,7 +408,7 @@ static bool setupMounts(nsjconf_t *nsjconf) {
 			/* is_dir= */ mnt::NS_DIR_YES,
 			/* is_mandatory= */ true, /* src_env= */ "",
 			/* dst_env= */ "", /* src_content= */ "",
-			/* is_symlink= */ false)) {
+			/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 			return false;
 		}
 	} else {
@@ -416,7 +416,7 @@ static bool setupMounts(nsjconf_t *nsjconf) {
 			/* options= */ "", nsjconf->is_root_rw ? 0 : MS_RDONLY,
 			/* is_dir= */ mnt::NS_DIR_YES,
 			/* is_mandatory= */ true, /* src_env= */ "", /* dst_env= */ "",
-			/* src_content= */ "", /* is_symlink= */ false)) {
+			/* src_content= */ "", /* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 			return false;
 		}
 	}
@@ -426,7 +426,7 @@ static bool setupMounts(nsjconf_t *nsjconf) {
 			/* is_dir= */ mnt::NS_DIR_YES,
 			/* is_mandatory= */ true, /* src_env= */ "",
 			/* dst_env= */ "", /* src_content= */ "",
-			/* is_symlink= */ false)) {
+			/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 			return false;
 		}
 	}
@@ -806,7 +806,7 @@ std::unique_ptr<nsjconf_t> parseArgs(int argc, char *argv[]) {
 				/* options= */ "", MS_BIND | MS_REC | MS_PRIVATE | MS_RDONLY,
 				/* is_dir= */ mnt::NS_DIR_MAYBE, /* is_mandatory= */ true,
 				/* src_env= */ "", /* dst_env= */ "", /* src_content= */ "",
-				/* is_symlink= */ false)) {
+				/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 				return nullptr;
 			}
 		}; break;
@@ -821,7 +821,7 @@ std::unique_ptr<nsjconf_t> parseArgs(int argc, char *argv[]) {
 				/* options= */ "", MS_BIND | MS_REC | MS_PRIVATE,
 				/* is_dir= */ mnt::NS_DIR_MAYBE, /* is_mandatory= */ true,
 				/* src_env= */ "", /* dst_env= */ "", /* src_content= */ "",
-				/* is_symlink= */ false)) {
+				/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 				return nullptr;
 			}
 		}; break;
@@ -830,7 +830,7 @@ std::unique_ptr<nsjconf_t> parseArgs(int argc, char *argv[]) {
 				/* options= */ "size=4194304", 0,
 				/* is_dir= */ mnt::NS_DIR_YES, /* is_mandatory= */ true,
 				/* src_env= */ "", /* dst_env= */ "", /* src_content= */ "",
-				/* is_symlink= */ false)) {
+				/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 				return nullptr;
 			}
 		}; break;
@@ -852,7 +852,7 @@ std::unique_ptr<nsjconf_t> parseArgs(int argc, char *argv[]) {
 				/* options= */ options, /* flags= */ 0,
 				/* is_dir= */ mnt::NS_DIR_MAYBE, /* is_mandatory= */ true,
 				/* src_env= */ "", /* dst_env= */ "", /* src_content= */ "",
-				/* is_symlink= */ false)) {
+				/* is_symlink= */ false, /* needs_mount_propagation= */ false)) {
 				return nullptr;
 			}
 		}; break;
@@ -864,7 +864,7 @@ std::unique_ptr<nsjconf_t> parseArgs(int argc, char *argv[]) {
 				/* options= */ "", /* flags= */ 0,
 				/* is_dir= */ mnt::NS_DIR_NO, /* is_mandatory= */ true,
 				/* src_env= */ "", /* dst_env= */ "", /* src_content= */ "",
-				/* is_symlink= */ true)) {
+				/* is_symlink= */ true, /* needs_mount_propagation= */ false)) {
 				return nullptr;
 			}
 		}; break;

@@ -57,6 +57,10 @@ message MountPt {
 	optional bool nodev = 14 [default = false];
 	/* Is it a noexec mount */
 	optional bool noexec = 15 [default = false];
+	/* Requires mount propagation for autofs/systemd mounts.
+	   WARNING: This makes ALL mounts in the container slaves to the host,
+	   not just this specific mount. Use only for trusted environments. */
+	optional bool needs_mount_propagation = 16 [default = false];
 }
 enum RLimit {
 	VALUE = 0; /* Use the provided value */

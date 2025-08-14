@@ -66,6 +66,7 @@ struct mount_t {
 	bool is_symlink;
 	bool is_mandatory;
 	bool mounted;
+	bool needs_mount_propagation;
 };
 
 struct idmap_t {
