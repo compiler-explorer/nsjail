@@ -390,7 +390,8 @@ static bool initCloneNs(nsjconf_t* nsjconf) {
 	for (const auto& mpt : nsjconf->mountpts) {
 		if (mpt.needs_mount_propagation) {
 			needs_mount_propagation = true;
-			LOG_I("Mount %s requires propagation - using MS_SLAVE for root", mpt.dst.c_str());
+			LOG_W("Mount %s requires propagation - setting ALL mounts as slaves to host", mpt.dst.c_str());
+			LOG_W("SECURITY WARNING: All bind mounts will receive events from host filesystem");
 			break;
 		}
 	}
@@ -398,9 +399,15 @@ static bool initCloneNs(nsjconf_t* nsjconf) {
 	unsigned long propagation_flag = needs_mount_propagation ? MS_SLAVE : MS_PRIVATE;
 	const auto propagation_name = needs_mount_propagation ? "MS_SLAVE" : "MS_PRIVATE";
 
+	if (needs_mount_propagation) {
+		LOG_W("Setting root filesystem to MS_SLAVE - ALL mounts become slaves to host");
+	}
 	if (mount("/", "/", NULL, MS_REC | propagation_flag, NULL) == -1) {
 		PLOG_E("mount('/', '/', NULL, MS_REC|%s, NULL)", propagation_name);
 		return false;
+	}
+	if (needs_mount_propagation) {
+		LOG_W("Root filesystem now MS_SLAVE - mount events from host will propagate");
 	}
 	if (mount(NULL, destdir->c_str(), "tmpfs", 0, "size=16777216") == -1) {
 		PLOG_E("mount(%s, 'tmpfs')", QC(*destdir));
